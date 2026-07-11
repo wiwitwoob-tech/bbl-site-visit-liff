@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>บันทึกการเยี่ยมชมโครงการ</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", "Sarabun", sans-serif;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 20px;
+    color: #1a1a1a;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: #666;
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    margin-top: 18px;
+  }
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 140px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    resize: vertical;
+  }
+  input[type="file"] {
+    margin-top: 4px;
+  }
+  .hint {
+    font-size: 12px;
+    color: #888;
+    margin-top: 6px;
+  }
+  button {
+    width: 100%;
+    padding: 14px;
+    margin-top: 24px;
+    background: #06c755;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    background: #aaa;
+  }
+  #status {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 14px;
+    color: #555;
+  }
+  #userInfo {
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>บันทึกการเยี่ยมชมโครงการ</h1>
+  <div class="sub">พิมพ์รายละเอียดการเยี่ยมชม ระบบจะช่วยแยกข้อมูลให้อัตโนมัติ</div>
+  <div id="userInfo">กำลังโหลดข้อมูลผู้ใช้...</div>
+  <label for="reportText">รายละเอียดการเยี่ยมชม</label>
+  <textarea id="reportText" placeholder="เช่น เยี่ยมชมโครงการ ABC Condo ยูนิตเหลือ 12 ยูนิต ติดต่อคุณสมชาย 081-234-5678 ลูกค้าสนใจแบบ 2 ห้องนอน"></textarea>
+  <div class="hint">ระบุชื่อโครงการ จำนวนยูนิตคงเหลือ ผู้ติดต่อ และบันทึกเพิ่มเติม (ถ้ามี)</div>
+  <label for="photoInput">แนบรูปภาพ (ถ้ามี)</label>
+  <input type="file" id="photoInput" accept="image/*" capture="environment">
+  <button id="submitBtn" onclick="submitForm()">ส่งข้อมูล</button>
+  <div id="status"></div>
+</div>
+<script>
+  // ===== CONFIG =====
+  const LIFF_ID = "2010673915-2elq3Jof";
+  const POWER_AUTOMATE_URL = "REPLACE_WITH_POWER_AUTOMATE_HTTP_TRIGGER_URL";
+  // ==================
+  let userId = "";
+  let displayName = "";
+  liff.init({ liffId: LIFF_ID }).then(() => {
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+    liff.getProfile().then(profile => {
+      userId = profile.userId;
+      displayName = profile.displayName;
+      document.getElementById('userInfo').textContent = "ผู้บันทึก: " + displayName;
+    }).catch(() => {
+      document.getElementById('userInfo').textContent = "ไม่สามารถโหลดข้อมูลผู้ใช้ได้";
+    });
+  }).catch(err => {
+    document.getElementById('status').textContent = "เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: " + err;
+  });
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  async function submitForm() {
+    const reportText = document.getElementById('reportText').value.trim();
+    const photoInput = document.getElementById('photoInput');
+    const statusEl = document.getElementById('status');
+    const btn = document.getElementById('submitBtn');
+    if (!reportText) {
+      statusEl.textContent = "กรุณากรอกรายละเอียดการเยี่ยมชม";
+      return;
+    }
+    if (!userId) {
+      statusEl.textContent = "ไม่พบข้อมูลผู้ใช้ LINE กรุณาลองใหม่";
+      return;
+    }
+    btn.disabled = true;
+    statusEl.textContent = "กำลังส่งข้อมูล...";
+    try {
+      let photoBase64 = null;
+      let photoFilename = null;
+      if (photoInput.files.length > 0) {
+        photoBase64 = await fileToBase64(photoInput.files[0]);
+        photoFilename = photoInput.files[0].name;
+      }
+      const payload = {
+        userId: userId,
+        displayName: displayName,
+        freeTextReport: reportText,
+        photoBase64: photoBase64,
+        photoFilename: photoFilename,
+        submittedAt: new Date().toISOString()
+      };
+      const res = await fetch(POWER_AUTOMATE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      statusEl.textContent = "ส่งข้อมูลเรียบร้อยค่ะ กำลังตรวจสอบข้อมูล...";
+      setTimeout(() => {
+        if (liff.isInClient()) {
+          liff.closeWindow();
+        }
+      }, 1800);
+    } catch (err) {
+      statusEl.textContent = "เกิดข้อผิดพลาด กรุณาลองใหม่: " + err.message;
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
