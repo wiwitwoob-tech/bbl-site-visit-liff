@@ -56,6 +56,42 @@
     color: #888;
     margin-top: 6px;
   }
+  .thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .thumb-wrap {
+    position: relative;
+    width: 72px;
+    height: 72px;
+  }
+  .thumb-wrap img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    display: block;
+  }
+  .thumb-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #e33;
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: center;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+  }
   button {
     width: 100%;
     padding: 14px;
@@ -92,8 +128,15 @@
   <label for="reportText">รายละเอียดการเยี่ยมชม</label>
   <textarea id="reportText" placeholder="เช่น เยี่ยมชมโครงการ ABC Condo ยูนิตเหลือ 12 ยูนิต ติดต่อคุณสมชาย 081-234-5678 ลูกค้าสนใจแบบ 2 ห้องนอน"></textarea>
   <div class="hint">ระบุชื่อโครงการ จำนวนยูนิตคงเหลือ ผู้ติดต่อ และบันทึกเพิ่มเติม (ถ้ามี)</div>
-  <label for="photoInput">แนบรูปภาพ (ถ้ามี)</label>
-  <input type="file" id="photoInput" accept="image/*" capture="environment">
+
+  <label for="salesPhotoInput">รูปกับพนักงานขาย (Dev Sales)</label>
+  <input type="file" id="salesPhotoInput" accept="image/*" capture="environment" multiple>
+  <div class="thumbs" id="salesThumbs"></div>
+
+  <label for="siteConditionPhotoInput">สภาพโครงการ (Site Condition)</label>
+  <input type="file" id="siteConditionPhotoInput" accept="image/*" capture="environment" multiple>
+  <div class="thumbs" id="siteConditionThumbs"></div>
+
   <button id="submitBtn" onclick="submitForm()">ส่งข้อมูล</button>
   <div id="status"></div>
 </div>
@@ -104,6 +147,13 @@
   // ==================
   let userId = "";
   let displayName = "";
+
+  // category -> array of { file, dataUrl }
+  const photosByCategory = {
+    sales: [],
+    site_condition: []
+  };
+
   liff.init({ liffId: LIFF_ID }).then(() => {
     if (!liff.isLoggedIn()) {
       liff.login();
@@ -119,6 +169,7 @@
   }).catch(err => {
     document.getElementById('status').textContent = "เกิดข้อผิดพลาดในการเชื่อมต่อ LINE: " + err;
   });
+
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -127,9 +178,49 @@
       reader.readAsDataURL(file);
     });
   }
+
+  function renderThumbs(category) {
+    const containerId = category === "sales" ? "salesThumbs" : "siteConditionThumbs";
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+    photosByCategory[category].forEach((item, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'thumb-wrap';
+      const img = document.createElement('img');
+      img.src = "data:image/*;base64," + item.dataUrl;
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'thumb-remove';
+      removeBtn.type = 'button';
+      removeBtn.textContent = '×';
+      removeBtn.onclick = () => {
+        photosByCategory[category].splice(idx, 1);
+        renderThumbs(category);
+      };
+      wrap.appendChild(img);
+      wrap.appendChild(removeBtn);
+      container.appendChild(wrap);
+    });
+  }
+
+  async function handleFileInput(category, inputEl) {
+    const files = Array.from(inputEl.files || []);
+    for (const file of files) {
+      const dataUrl = await fileToBase64(file);
+      photosByCategory[category].push({ filename: file.name, dataUrl: dataUrl });
+    }
+    inputEl.value = "";
+    renderThumbs(category);
+  }
+
+  document.getElementById('salesPhotoInput').addEventListener('change', (e) => {
+    handleFileInput('sales', e.target);
+  });
+  document.getElementById('siteConditionPhotoInput').addEventListener('change', (e) => {
+    handleFileInput('site_condition', e.target);
+  });
+
   async function submitForm() {
     const reportText = document.getElementById('reportText').value.trim();
-    const photoInput = document.getElementById('photoInput');
     const statusEl = document.getElementById('status');
     const btn = document.getElementById('submitBtn');
     if (!reportText) {
@@ -143,18 +234,21 @@
     btn.disabled = true;
     statusEl.textContent = "กำลังส่งข้อมูล...";
     try {
-      let photoBase64 = null;
-      let photoFilename = null;
-      if (photoInput.files.length > 0) {
-        photoBase64 = await fileToBase64(photoInput.files[0]);
-        photoFilename = photoInput.files[0].name;
-      }
+      const photos = [];
+      ['sales', 'site_condition'].forEach(category => {
+        photosByCategory[category].forEach(item => {
+          photos.push({
+            category: category,
+            filename: item.filename,
+            dataUrl: item.dataUrl
+          });
+        });
+      });
       const payload = {
         userId: userId,
         displayName: displayName,
         freeTextReport: reportText,
-        photoBase64: photoBase64,
-        photoFilename: photoFilename,
+        photos: photos,
         submittedAt: new Date().toISOString()
       };
       const res = await fetch(POWER_AUTOMATE_URL, {
